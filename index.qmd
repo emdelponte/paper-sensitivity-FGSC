@@ -1,0 +1,1094 @@
+---
+title: "Reproducible report: <br/> Resistance to tebuconazole and carbendazim in Fusarium graminearum population"
+format:
+  html:
+    toc: true
+    toc-location: right
+execute:
+  freeze: auto
+  cache: true
+  warning: false
+theme: cosmo
+  
+---
+
+
+
+# R Packages
+
+All packages used during this work.
+
+```{r message=FALSE, warning=FALSE}
+library(readxl)
+library(tidyverse)
+# library(ec50estimator)
+library(cowplot)
+library(ggthemes)
+# library(drc)
+# library(ggridges)
+# library(epiR)
+# library(car)
+library(gsheet)
+library(patchwork)
+library(rnaturalearth)
+library(ggmap)
+library(ggrepel)
+# library(lme4)
+# library(lmerTest)
+# library(ggsn)
+library(agricolae)
+library(easyanova)
+
+
+```
+
+# Isolates 
+
+All isolates used in this study with their location were loaded to plotting the map below.
+
+```{r}
+data_load <- gsheet2tbl("https://docs.google.com/spreadsheets/d/1JwJivEu1M6yb4tMcpXdWiWBSl8rroB8x/edit#gid=531845475") %>% 
+  mutate(genotype = case_when(genotype == "XXX" ~ "Failed",
+                              TRUE ~ genotype)) 
+  
+
+data_load
+```
+
+## By year and state
+
+```{r}
+map_all  = data_load %>% 
+  group_by(year, state, genotype) %>%
+  summarise(n = length(code)) 
+map_all
+```
+
+## By year in PR
+
+```{r}
+
+p1 <- map_all %>% 
+  filter(state=="PR") %>% 
+ggplot()+
+  # ylim(0,60)+
+  geom_col(aes(factor(year), y= n, fill = genotype), position = "stack",width = 0.5,  alpha=0.9)+
+  # ggthemes::scale_fill_calc()+
+  theme_minimal()+
+  theme(legend.position = "bottom",
+        legend.key.size = unit(0.3, 'cm')
+    # legend.position = c(0.1,0.8),
+       # legend.justification = c("left", "top")
+       )+
+  scale_fill_manual(values=c("#00AFBB","blue",  "#E7B800", "#FC4E07"), breaks=c('15ADON', '3ADON', 'NIV', 'Failed'))+ #"#00AFBB", "#E7B800", "#FC4E07"
+  labs(x = "Year", y = "Count of Isolates", fill="")+
+  ylim(0,100)
+
+p1
+# ggsave("figs/n_year_rs.png",width = 5, height = 3, dpi = 300)
+```
+
+
+
+
+
+```{r}
+# install.packages("devtools")
+# devtools::install_github("ropensci/rnaturalearthhires")
+library("rnaturalearth")
+
+BRA <- ne_states(country = "Brazil",
+  returnclass = "sf")
+
+```
+
+## By municipality 
+
+```{r}
+map_all_1  = data_load %>% 
+  group_by(state, location) %>%
+  summarise(n = length(code),
+            lat=mean(lat), 
+            long= mean(lon)) 
+map_all_1
+```
+
+##  Map of isolates
+
+```{r}
+
+p2 <- ggplot() +
+  geom_sf(data = BRA, fill = "gray80",color = "white")+
+geom_point(data = map_all_1, aes(as.numeric(long),as.numeric(lat),  size=n), fill = "#4c7e16" ,shape = 21, width = 0.9)+
+geom_text_repel(data = map_all_1, aes(as.numeric(long),as.numeric(lat), label=(n)), size = 4, box.padding = 0.2, min.segment.length =1, seed = F, max.overlaps = Inf)+
+   xlim(-56,-48)+
+  ylim(-33,-23)+
+  # xlim(-54.9, -47.8)+
+   # ylim(-30.8,-22.3)+
+  #scale_size_continuous(breaks = seq(1,10, by = 1), range = c(1, 6))+
+  # facet_grid(~year)+
+  theme_map()+
+  # scale_color_manual(values = c("orange","black"))+
+  # scale_fill_manual(values = c("orange","black"))+
+  # guides(color=F, size=F)+
+  
+ theme(legend.position = "none",
+       strip.background =  element_blank(),
+       strip.text = element_text(face="bold", size=16),text = element_text(size=16)
+       )+
+      #theme(legend.position = "top",
+          #legend.title=element_text(size=10, face = "bold"),
+          #legend.text=element_text(size=9),
+          #, panel.background = element_rect(fill = "grey96"), 
+          #strip.text = element_text(face="bold", size=16),text = element_text(size=16)
+          #legend.position = c(0, 0)
+       #legend.justification = c("top")
+       #legend.margin = margin(-12, 0, 0, 0)
+       #)+
+  labs(fill="", size="", x="", y="", color="" )
+  #  annotate("text", x=-53, y=-24, label="PR", size=4)+
+  # annotate("text", x=-54, y=-30, label="RS", size=4)
+ p2
+  # ggsave("figs/map_new_5.png", dpi= 600, height = 8, width = 8 )
+```
+
+
+
+
+ 
+
+
+
+# EC50
+
+In this study, we characterize the phenotype of a sample of 35 Fusarium graminearum isolates to tebuconazole and carbendazim.
+
+## Data
+
+This database contains information about all mycelial growth tests conducted, divided by: experiment and geographic collection.
+
+```{r}
+mycelial_assay<- gsheet2tbl("https://docs.google.com/spreadsheets/d/11N56uIawd82YdHDG9W7CnPWrO0oWnEGd/edit#gid=1544594798") %>%
+  mutate(mycelial_growth = as.numeric(`cm-6`),
+         dose = as.numeric(dose))
+  # group_by(isolate, dose) %>%
+  # dplyr::mutate(GC = as.numeric(GC)) %>%
+  # dplyr::mutate(Dose = as.numeric(Dose))
+  
+mycelial_assay
+
+```
+
+## Visualization
+
+
+```{r}
+
+mycelial_assay %>% 
+  ggplot(aes(as.factor(dose), mycelial_growth, color=genotype))+
+    stat_summary(fun.data = "mean_cl_boot",
+               geom = "errorbar",
+               width = 0,
+               size =.5,
+               position = position_dodge(width=.5))+
+  stat_summary(fun = "mean",
+               size = 1.4,
+               geom = "point",
+               position = position_dodge(width=.5))+
+  facet_wrap(~isolate)+
+  # scale_color_colorblind()+
+  theme_minimal_hgrid()+
+   labs(x = expression(Dose~~(μg/ml)), 
+        y = "Mycelial growth (mm)", color="Genotype")
+
+```
+# Linearized data by isolate
+
+```{r}
+mycelial_assay %>% 
+  filter(dose != "0") %>% 
+  ggplot(aes(log(dose), inib, color = fungicide) )+
+  geom_smooth(method="lm", fullrange = TRUE, se = T, size = 0.5)+
+  geom_point(alpha = 0.5, size=3)+
+  facet_wrap(~ isolate)+ 
+  # theme_cowplot()+
+  # background_grid(major = "xy", size.major = 0.5, size.minor = 0.5) +
+  theme_minimal_hgrid()+
+  theme(legend.position="top")+
+  labs(x = 'log(dose)', 
+        y = "Inhibition of Mycelial growth (%)", color="Genotype")
+```
+
+
+# EC50 estimates
+
+```{r}
+# fit linear regression model to each isolate (inib ~ log(dose)) and estimates the EC50 
+
+ec <- mycelial_assay %>% 
+  filter(dose != "0") %>%  
+  group_by(year, isolate, fungicide, genotype) %>% 
+  do(broom::tidy(lm(.$inib ~ log(.$dose)))) %>% 
+  dplyr::select(year, isolate, fungicide, genotype, term, estimate) %>%
+  group_by(year, isolate, fungicide) %>% 
+  spread(term, estimate) %>% 
+  setNames( c("year", "isolate", "fungicide", "genotype", "intercept", "slope")) %>% 
+  mutate(ec50 = exp((50 - intercept)/slope))
+  
+
+```
+
+## Descritive
+
+```{r}
+ec %>%  
+  ggplot(aes(x = ec50)) +
+  geom_histogram(fill=I("white"), col=I("black")) +
+  facet_wrap(~ fungicide, ncol=2, scales= "free")+
+  theme_minimal()+
+  labs(x = (expression(paste('EC'[50], ' (', mu,'g/ml)'))), y = "Number of isolates")
+```
+
+
+```{r}
+p3 <- ec %>%  
+  # filter(genotype != "XXX") %>% 
+  mutate(genotype = case_when(genotype == "XXX" ~ "Failed",
+                              TRUE ~ genotype
+                              )) %>% 
+  ggplot(aes(x = ec50, fungicide, fill = genotype)) +
+  ggjoy::geom_joy(scale = 2, alpha = .5, rel_min_height = 0.001) +
+  geom_jitter(alpha=0.7, height = 0.08, size = 1.5, aes(color = genotype))+
+  scale_y_discrete(expand = c(0.01, 0.15)) +  
+  scale_x_continuous(expand = c(0, 0))+ 
+  #ylim(0,1.05)+
+  ggjoy::theme_joy()+ 
+  scale_fill_manual(values=c("#00AFBB","blue",  "#E7B800", "#FC4E07"), breaks=c('15ADON', '3ADON', 'NIV', 'Failed'))+ #"#00AFBB", "#E7B800", "#FC4E07"
+  scale_color_manual(values=c("#00AFBB","blue",  "#E7B800", "#FC4E07"), breaks=c('15ADON', '3ADON', 'NIV', 'Failed'))+ #"#00AFBB", "#E7B800", "#FC4E07"
+  theme(legend.position = "none",
+    #legend.title=element_text(size=10, face = "bold"),
+    #legend.text=element_text(size=9),
+    #legend.margin = margin(6, 6, 6, 6),
+       #axis.text = element_text(size=12),
+       # legend.position = c(1, 1.05),
+       # legend.justification = c("right", "top"),
+       #plot.margin = unit(c(2,0,0,0), "lines"),
+       axis.title.x = element_text(hjust=0.5))+
+  labs(x = (expression(paste('EC'[50], ' (', mu,'g/ml)'))), y = "", fill = "Genotype", color = "Genotype")
+
+p3
+```
+
+# FIGURE 1
+
+```{r}
+(p2 | (p1/p3)) +
+  plot_annotation(tag_levels = "A")+
+  plot_layout(widths = c(1,1))
+ggsave("figs/figure1.png", width =7, height = 5)
+  
+```
+
+
+
+
+### Statistics 
+
+
+
+```{r}
+ ec_stats <- ec %>% 
+  filter(genotype != "XXX") %>% 
+  mutate(genotype = case_when(genotype == "15ADON" ~ "15ADON",
+                              genotype == "3ADON" ~ "NIV+3ADON",
+                              genotype == "NIV" ~ "NIV+3ADON"))
+
+
+ec_stats %>% 
+  #filter(Population=="PR") %>% 
+  group_by(fungicide, genotype) %>% 
+  summarise(n = length(isolate),
+            mean=mean(ec50),
+            se=sd(ec50)/sqrt(n),
+            min = min(ec50),
+            median=median(ec50),
+            max = max(ec50),
+            lower= quantile(ec50, 0.25),
+            upper= quantile(ec50, 0.75))
+   
+  
+  
+```
+
+
+## KS test
+```{r}
+
+
+carb <- ec_stats %>% 
+  filter(fungicide == "CARB") %>% 
+  spread(genotype, ec50) 
+
+
+ks.test(carb$`15ADON`, carb$`NIV+3ADON`)
+
+
+tebu <- ec_stats %>% 
+  filter(fungicide == "TEBU") %>% 
+  spread(genotype, ec50) 
+
+
+ks.test(tebu$`15ADON`, tebu$`NIV+3ADON`)
+
+
+
+overall <- ec_stats %>% 
+  # filter(fungicide == "CARB") %>% 
+  spread(fungicide, ec50) 
+
+
+ks.test(overall$`CARB`, overall$`TEBU`)
+
+
+
+```
+
+
+
+
+
+
+##Boxplot carb 
+
+
+```{r}
+box_carb <- ec_stats %>%
+  filter(fungicide == "CARB") %>% 
+  ggplot(aes(genotype, ec50))+
+  geom_jitter(size=2, color = "black", width = 0.05)+
+  ylim(0,4)+
+  geom_boxplot(width=0.5, outlier.color = NA, color= "black", fill = NA, size =1)+
+  scale_color_colorblind()+
+   #geom_hline(yintercept = 5, color="red")+
+  #annotate("text", x=2.5,y=5.5, label="DD", size=4, color="red")+
+  #facet_wrap("Population")+
+  geom_hline(yintercept = 1.4, color="red", linetype = "dashed")+
+  theme_minimal_hgrid()+
+   labs(y = expression(EC[50]~~μg/ml),
+        x="")
+# ggsave("figs/box_AZOX_2.png", dpi = 500, height = 3.5, width = 5)
+
+box_carb
+```
+##Boxplot TEBU 
+
+
+```{r}
+box_teb <- ec_stats %>%
+  filter(fungicide == "TEBU") %>% 
+  ggplot(aes(genotype, ec50))+
+  geom_jitter(size=2, color = "black", width = 0.05)+
+  ylim(0,4)+
+  geom_boxplot(width=0.5, outlier.color = NA, color= "black", fill = NA, size =1)+
+  scale_color_colorblind()+
+   #geom_hline(yintercept = 5, color="red")+
+  #annotate("text", x=2.5,y=5.5, label="DD", size=4, color="red")+
+  #facet_wrap("Population")+
+  geom_hline(yintercept = 2, color="red", linetype = "dashed")+
+  theme_minimal_hgrid()+
+   labs(y = expression(EC[50]~~μg/ml),
+        x="")
+# ggsave("figs/box_AZOX_2.png", dpi = 500, height = 3.5, width = 5)
+
+box_teb
+```
+# FIGURE 2
+
+
+
+
+```{r fig.height=4, fig.width=8}
+(box_teb | box_carb)+
+  plot_annotation(tag_levels = 'A')
+ggsave("figs/figure2.png", width = 8, height =5)
+
+```
+
+
+
+# Correlation EC50
+
+```{r}
+cor_ec50 <- ec %>% 
+  dplyr::select(year,isolate, genotype, ec50) %>% 
+  group_by(year, isolate, genotype) %>% 
+  spread(fungicide, ec50) %>% 
+  mutate(log_carb=log(CARB),
+         log_teb=log(TEBU)) 
+cor_ec50
+
+```
+
+```{r}
+
+cor.test((cor_ec50$log_carb), (cor_ec50$log_teb), method ="spearman")
+
+cor.test((cor_ec50$CARB), (cor_ec50$TEBU), method ="spearman")
+
+
+```
+
+
+
+```{r}
+cor_ec50 %>% 
+  ggplot(aes(CARB, TEBU, fill = genotype))+
+  #geom_smooth(method=lm)+
+  geom_point(shape=21, size=3)+
+  theme_minimal()+
+  scale_fill_manual(values=c("#00AFBB","blue",  "#E7B800", "#FC4E07"), breaks=c('15ADON', '3ADON', 'NIV', 'XXX')) 
+
+
+  
+
+cor_ec50 %>% 
+  ggplot(aes(log_carb, log_teb, fill = genotype))+
+  #geom_smooth(method=lm)+
+  geom_point(shape=21, size=3)+
+  theme_minimal()+
+  labs(x =expression(Log~(EC[50])~~μg/ml~Carbendazim), y = expression(Log~(EC[50])~~μg/ml~Tebuconazole, color=""))+
+  scale_fill_manual(values=c("#00AFBB","blue",  "#E7B800", "#FC4E07"), breaks=c('15ADON', '3ADON', 'NIV', 'XXX')) 
+
+# ggsave("figs/cor_ec50_log.png", dpi = 500)
+```
+
+
+
+
+# DISCRIMINATORY DOSES
+
+We also screening isolates through discriminatory dose for each fungicide. 
+
+
+## Dataset - 2011-2014
+```{r}
+dd_2014_all <-  gsheet2tbl("https://docs.google.com/spreadsheets/d/1JwJivEu1M6yb4tMcpXdWiWBSl8rroB8x/edit#gid=473031057") 
+
+dd_2014 <- dd_2014_all %>% 
+  mutate(test = (test1 + test2)/2,
+         teb = (teb1 + teb2)/2,
+         carb = (carb1 + carb2)/2,
+         teb_2ppm = (teb_dose2_rep1 + teb_dose2_rep2)/2) %>%
+  mutate(disc_carb = (carb/test)*100,
+         disc_teb = (teb/test)*100,
+         disc_teb2 = (teb_2ppm/test)*100,
+         resis_carb = case_when(disc_carb > 50 ~ "carb R",
+                          disc_carb < 50 ~ "carb S"),
+         resis_teb = case_when(disc_teb > 50 ~ "tebu R",
+                         disc_teb < 50 ~ "tebu S"),
+         resis_teb2 = case_when(disc_teb2 > 50 ~ "tebu R",
+                         disc_teb2 < 50 ~ "tebu S"
+                         )) %>% 
+  pivot_longer(cols = starts_with("resis"), names_to = "sensitivity", values_to = "valor") %>% 
+  filter(valor != "carb S",
+         valor != "tebu S")
+  
+
+
+dd_2014 %>% 
+  ggplot(aes(sensitivity, code, fill = valor))+
+  # geom_boxplot(outlier.colour = NA) + 
+  geom_tile(color = "white", size = 1)+
+  facet_grid(~rep_discrim)+
+  theme_minimal()
+
+# openxlsx::write.xlsx(dd_2014, 'dd_2014.xlsx')
+
+phenotype_2014 <- dd_2014_all %>% 
+  filter(rep_discrim == "1") %>% 
+  dplyr::select(strain = code, year, genotype, location) %>% 
+  mutate(phenotype_carb = case_when(strain == "3523" ~  "carb R",
+                                    strain == "3325" ~  "carb R",
+                                    strain == "3097" ~  "carb R",
+                                    strain == "2657" ~  "carb R",
+                                    strain == "2655" ~  "carb R",
+                                    strain == "2536" ~  "carb R",
+                                    strain == "2519" ~  "carb R",
+                                    strain == "2492" ~  "carb R",
+                                    strain == "008/13" ~  "carb R",
+                                    TRUE ~ "carb S"),
+         phenotype_teb = case_when(strain == "2662" ~  "tebu R",
+                                   strain == "2657" ~  "tebu R",
+                                   strain == "2536" ~  "tebu R",
+                                   strain == "13/13" ~  "tebu R",
+                                   strain == "008/13" ~  "tebu R",
+                                   TRUE ~ "tebu S"))
+
+```
+
+## Dataset 2018+ isolates
+
+```{r}
+
+dd_2018_1 <- gsheet2tbl("https://docs.google.com/spreadsheets/d/1-affIwXi84QYDKHc9qeLwKYnyccLMg2Q/edit#gid=1479034531") %>% 
+  # read_excel("disc_dose_2018.xlsx", 1) %>%
+  # read_excel("avaliação original_gabriel.xlsx", 1) %>%
+  mutate(rep_discrim = 1) 
+
+dd_2018_all <- gsheet2tbl("https://docs.google.com/spreadsheets/d/1-affIwXi84QYDKHc9qeLwKYnyccLMg2Q/edit#gid=13480782") %>% 
+  mutate(rep_discrim = 2) %>% 
+  bind_rows(dd_2018_1) %>%
+  pivot_longer(cols = starts_with("dam"), names_to = "diametro", values_to = "valor") %>% 
+  mutate(valor = as.numeric(valor),
+         strain = as.factor(code),
+         rep_discrim = as.factor(rep_discrim)) %>% 
+  group_by(rep_discrim, location, state, year,strain, product, conc, rep) %>% 
+  summarise(mean = mean(valor)) %>% 
+  filter(year != "controls")
+
+
+dd_2018_all %>% 
+  ggplot(aes(rep_discrim, mean, fill = product))+
+  geom_boxplot(outlier.colour = NA,position = position_dodge()) + 
+  labs(y = "Diameter (mm)")
+
+
+
+```
+
+
+#### Create variables relative to non-treated check
+
+```{r}
+dd_2018 <- dd_2018_all %>%
+  group_by(rep_discrim, strain, product,year) %>% 
+  summarise(mean = mean(mean)) %>% 
+  spread(product, mean) %>% 
+  mutate(disc_bendazol = (bendazol/test)*100,
+         disc_tebufort = (tebufort/test)*100,
+         resis_carb = case_when(disc_bendazol > 50 ~ "carb R",
+                          disc_bendazol < 50 ~ "carb S"),
+         resis_teb = case_when(disc_tebufort > 50 ~ "tebu R",
+                         disc_tebufort < 50 ~ "tebu S")) %>% 
+  pivot_longer(cols = starts_with("resis"), names_to = "sensitivity", values_to = "valor") %>% 
+  filter(valor != "carb S",
+         valor != "tebu S")
+  
+
+
+dd_2018 %>% 
+  ggplot(aes(sensitivity, strain, fill = valor))+
+  # geom_boxplot(outlier.colour = NA) + 
+  geom_tile(color = "white", size = 1)+
+  facet_grid(~rep_discrim)+
+  theme_minimal()
+
+
+phenotype_2018 <- dd_2018 %>% 
+  filter(rep_discrim == "1") %>% 
+  dplyr::select(strain, year) %>% 
+  mutate(location = "Guarapuava",
+         genotype = "15ADON",
+         phenotype_carb = case_when(strain == "6149" ~  "carb S",
+                                    TRUE ~ "carb R"),
+         phenotype_teb = case_when(strain == "6494" ~  "tebu R",
+                                   strain == "6489" ~  "tebu R",
+                                   strain == "6450" ~  "tebu R",
+                                   strain == "6449" ~  "tebu R",
+                                   strain == "6149" ~  "tebu R",
+                                   strain == "6074" ~  "tebu R",
+                                   TRUE ~ "tebu S"))
+  
+
+```
+
+## Plot
+```{r}
+plot_dd <- phenotype_2014 %>%
+  bind_rows(phenotype_2018) %>% 
+  mutate(genotype = case_when(genotype == "XXX" ~ "Failed",
+                              TRUE ~ genotype)) %>% 
+  pivot_longer(cols = starts_with("phenot"), names_to = "var", values_to = "phenotype") %>% 
+  mutate(population = case_when(year < 2015 ~ "<2014",
+                                year > 2015 ~ ">2014")) %>%
+  group_by(population,  phenotype) %>%
+  summarise(n = length(strain))
+
+ 
+ 
+number_sensitive <- phenotype_2014 %>%
+  bind_rows(phenotype_2018)  %>% 
+   mutate(population = case_when(year < 2015 ~ "<2014",
+                                year > 2015 ~ ">2014")) %>%
+  group_by(year,population) %>%
+  summarise(n_sens = length(strain)) %>% 
+  mutate(total_isolates = case_when(population == "<2014" ~ 227,
+                                     population == ">2014" ~ 42))
+
+plot_dd <- plot_dd %>%
+  # mutate(population = case_when(year < 2015 ~ "<2014",
+  #                               year > 2015 ~ ">2014")) %>%
+  left_join(number_sensitive) %>% 
+  filter(phenotype %in% c("tebu R", "carb R" )) %>%
+  # group_by(phenotype) %>%
+  # summarise(count = n()) %>%
+  mutate(prop_year = n/n_sens,
+         prop_populatio = n/total_isolates) 
+```
+
+## By year - tebu
+
+```{r}
+dd_tebu <- plot_dd %>% 
+  filter(phenotype == "tebu R") %>% 
+  ggplot()+
+  # ylim(0,60)+
+  geom_col(aes(factor(year), y= n, fill = phenotype), position = "stack",width = 0.5,  alpha=0.9)+
+  # ggthemes::scale_fill_calc()+
+  geom_vline(xintercept = 3.5, linetype = "dashed")+
+  theme_minimal()+
+  # facet_grid(~phenotype)+
+  theme(legend.position = "bottom",
+        legend.key.size = unit(0.3, 'cm')
+    # legend.position = c(0.1,0.8),
+       # legend.justification = c("left", "top")
+       )+
+  # scale_fill_discrete(breaks=c('15ADON', '3ADON', 'NIV', 'Failed'))+
+  labs(x = "Year", y = "Count of Isolates", fill="")+
+  ylim(0,30)+
+  scale_fill_manual(values=c("#00AFBB","blue",  "#E7B800", "#FC4E07"), breaks=c('15ADON', '3ADON', 'NIV', 'Failed'))
+
+dd_tebu
+# ggsave("figs/n_year_rs.png",width = 5, height = 3, dpi = 300)
+```
+
+## By year - tebu
+
+```{r}
+dd_carb <- plot_dd %>% 
+  filter(phenotype == "carb R") %>% 
+  ggplot()+
+  # ylim(0,60)+
+  geom_col(aes(factor(year), y= n, fill = phenotype), position = "stack",width = 0.5,  alpha=0.9)+
+  # ggthemes::scale_fill_calc()+
+  theme_minimal()+
+  geom_vline(xintercept = 3.5, linetype = "dashed")+
+  # facet_grid(~phenotype)+
+  theme(legend.position = "bottom",
+        legend.key.size = unit(0.3, 'cm')
+    # legend.position = c(0.1,0.8),
+       # legend.justification = c("left", "top")
+       )+
+  # scale_fill_discrete(breaks=c('15ADON', '3ADON', 'NIV', 'Failed'))+
+  labs(x = "Year", y = "Count of Isolates", fill="")+
+  # scale_x_discrete(limits = c(2011, 2012), breaks = seq(2011, 2022, by = 1))+
+  ylim(0,30)+
+  scale_fill_manual(values=c("#00AFBB","blue",  "#E7B800", "#FC4E07"), breaks=c('15ADON', '3ADON', 'NIV', 'Failed'))
+
+dd_carb
+  
+
+# ggsave("figs/n_year_rs.png",width = 5, height = 3, dpi = 300)
+```
+# FIGURE 3
+
+
+```{r fig.height=4, fig.width=8}
+(dd_tebu | dd_carb)+
+  plot_annotation(tag_levels = 'A')+
+  plot_layout(widths = c(1, 1),
+              guides = "collect") &
+  theme(legend.position = "bottom")
+  
+ggsave("figs/figure3.png", width = 7, height =4)
+
+```
+  
+# INOCULATIONS - control efficacy assays
+
+## The two greenhouse and field experiment combined 
+
+```{r}
+
+dat_field <- gsheet2tbl("https://docs.google.com/spreadsheets/d/1Q2p-i1-Xqw5uCurY28c4o4hU_KQC3Ne_/edit#gid=148124723") %>% 
+  # read_excel("exp-viveiro.xlsx", 1) %>% 
+  mutate(exp = "field", trial = "Field")
+
+dat_efficacy <- gsheet2tbl("https://docs.google.com/spreadsheets/d/1-hldYVo0tRwBO7gMM6R3VyJFkv2QI090/edit#gid=1351986665") %>% 
+  mutate(trial = "Greenhouse") %>% 
+  # read_excel("exp.xlsx", 3) %>% 
+  bind_rows(dat_field) %>% 
+  filter(#exp == "1", 
+         isol != "test", 
+         n_spikelets != "NA") %>% 
+  group_by(exp,  isol, fung, block, trial) %>% 
+  gather(dia, doentes, 6:8) %>% 
+  mutate (day = as.numeric(dia)) %>% 
+  mutate(sev = (doentes/n_spikelets)*100) %>% 
+  unite(trat, isol, fung, sep = ".", remove = F)
+
+```
+
+## Preparing dataset
+
+### Create variables auspc
+
+```{r}
+# calculate area under severity curve (auspc)
+exp_audpc <- dat_efficacy %>% 
+   group_by(exp,trial, trat, isol, fung, block) %>% 
+   summarise(audpc = audpc(sev, day, type = "absolute")) 
+```
+
+
+### Descriptive
+
+```{r}
+
+dat_efficacy %>% 
+  group_by(trial, trat, fung, isol, day) %>% 
+  summarize(media_sev = mean(sev, na.rm=TRUE), 
+           sd_sev = sd(sev, na.rm=TRUE),
+           n = length(sev),
+           se_sev = sd_sev / sqrt(n),
+           ic_sev = qt(0.975, df = n - 1) * se_sev) %>% 
+  ggplot(., aes(day, media_sev,  color= fung)) +
+  geom_point(size=2)+ 
+  geom_line()+
+  geom_errorbar(aes(ymin = media_sev-ic_sev,ymax = media_sev+ic_sev), width=0.4, size= 0.7)+
+  facet_grid(trial~isol)+
+  scale_x_continuous(breaks=c(5, 10, 15))+
+  labs(y = "Severity (%)", x = "Days after inoculation", color = "Fungicide") +
+  #theme_minimal()+
+  scale_color_viridis_d(begin = 0.8, end = 0.1)+
+  theme(legend.position="top", strip.text = element_text(face="bold"))
+
+```
+
+
+# Stats
+
+## Greenhouse
+```{r}
+stats_gh <- exp_audpc %>% 
+  filter(trial == "Greenhouse",
+         fung != "metc")
+
+model <- aov (audpc ~ block + fung*isol*exp ,  data=stats_gh) ## triple interaction not significant
+anova(model)
+```
+
+
+```{r}
+stats_gh <- exp_audpc %>% 
+  filter(trial == "Greenhouse")
+
+anova_gh <- stats_gh %>% 
+  # filter(cultivar == "264"
+  #        # product != "Fox Xpro",
+  #        # product != "Fox Xpro+Bendazol"
+  #        ) %>%
+  ungroup() %>%
+  select(fung, isol, block, audpc) %>%
+  # mutate(sev = asin(sqrt(sev/100))) %>%
+  # mutate(sev = sqrt(sev)) %>%
+  # mutate(sev = log(sev+0.01)) %>%
+  ea2(design = 2)
+
+anova_gh$`Analysis of variance`
+
+```
+
+
+```{r}
+gh_factor1 <- anova_gh$`Adjusted means (factor 1)` %>% 
+  #left_join(altura_plantas_2) %>% 
+  # mutate(control = round((1-(adjusted.mean/454.4500))*100,0)) %>% 
+  #mutate(control = round((1-(response/261.4))*100,1)) %>% 
+  ggplot() +
+  geom_errorbar(aes(`factor_1`, adjusted.mean, color = scott_knott,  ymin = adjusted.mean - standard.error, ymax = adjusted.mean + standard.error), size = 1, width = 0.1)+
+  geom_point(aes(`factor_1`, adjusted.mean, color = scott_knott), size = 3)+
+  #geom_jitter(aes(Tratamentos, height_mean), size= 1, width =0.1, alpha = 0.7)+
+  labs (x = "Factor 1",
+        y = "Adjusted AUDPC mean",
+        color = "") +
+  ggthemes::scale_color_calc()+
+  #scale_alpha_discrete(range = c(0.2, 1))+
+  theme_minimal_hgrid()+
+  # coord_flip()+
+  theme(legend.position= "none")+
+  # geom_text(aes(x = `factor_1`, y = 0,
+  #               label = control))+
+  scale_y_continuous(breaks=seq(0,500,100), limits = c(-5,502), expand = c(0,0))
+```
+
+## Control efficacy
+Factor 1 (fungicide spray)
+```{r}
+anova_gh$`Adjusted means (factor 1)` %>% 
+  mutate(control = round((1-(adjusted.mean/454.4500))*100,0))
+
+```
+
+Factor 2 (isolates)
+
+```{r}
+anova_gh$`Adjusted means (factor 2)` 
+
+```
+
+
+```{r}
+gh_factor2 <- anova_gh$`Adjusted means (factor 2)` %>% 
+  #left_join(altura_plantas_2) %>% 
+  # mutate(control = round((1-(adjusted.mean/454.4500))*100,0)) %>% 
+  #mutate(control = round((1-(response/261.4))*100,1)) %>% 
+  ggplot() +
+  geom_errorbar(aes(`factor_2`, adjusted.mean, color = tukey,  ymin = adjusted.mean - standard.error, ymax = adjusted.mean + standard.error), size = 1, width = 0.1)+
+  geom_point(aes(`factor_2`, adjusted.mean, color = tukey), size = 3)+
+  #geom_jitter(aes(Tratamentos, height_mean), size= 1, width =0.1, alpha = 0.7)+
+  labs (x = "Factor 2",
+        y = "Adjusted AUDPC mean",
+        color = "") +
+  ggthemes::scale_color_calc()+
+  #scale_alpha_discrete(range = c(0.2, 1))+
+  theme_minimal_hgrid()+
+  theme(legend.position= "none")+
+ scale_y_continuous(breaks=seq(0,500,100), limits = c(-5,502), expand = c(0,0))
+  
+
+```
+### Plot
+
+
+```{r}
+
+(gh_factor1|gh_factor2) +
+ plot_layout(widths = c(1,2))+
+  plot_annotation(tag_levels = 'A')
+  ggsave("figs/figure4_greenhouse.png", width =10, height =5)
+```
+
+## Field
+
+```{r}
+stats_field <- exp_audpc %>% 
+  filter(trial == "Field")
+
+anova_field <- stats_field %>% 
+  # filter(cultivar == "264"
+  #        # product != "Fox Xpro",
+  #        # product != "Fox Xpro+Bendazol"
+  #        ) %>%
+  ungroup() %>%
+  select(fung, isol, block, audpc) %>%
+  # mutate(sev = asin(sqrt(sev/100))) %>%
+  # mutate(sev = sqrt(sev)) %>%
+  # mutate(sev = log(sev+0.01)) %>%
+  ea2(design = 2)
+
+anova_field$`Analysis of variance`
+
+```
+
+## Control efficacy
+Factor 1 (fungicide spray) in levels of factor 2 (isolates)
+
+```{r}
+anova_field$`Adjusted means (factor 1 in levels of factor 2)`$`factor_1 in  R1` %>% 
+  mutate(control = round((1-(adjusted.mean/270.2053))*100,0)) 
+
+anova_field$`Adjusted means (factor 1 in levels of factor 2)`$`factor_1 in  R2` %>% 
+  mutate(control = round((1-(adjusted.mean/189.4570))*100,0))
+
+anova_field$`Adjusted means (factor 1 in levels of factor 2)`$`factor_1 in  S` %>% 
+  mutate(control = round((1-(adjusted.mean/368.7181))*100,0))
+
+anova_field$`Adjusted means (factor 1 in levels of factor 2)`$`factor_1 in  S_R1` %>% 
+  mutate(control = round((1-(adjusted.mean/382.7263))*100,0))
+
+anova_field$`Adjusted means (factor 1 in levels of factor 2)`$`factor_1 in  S_R2` %>% 
+  mutate(control = round((1-(adjusted.mean/459.8630))*100,0))
+
+```
+
+
+Factor 2 (isolates) in levels of factor 1 (fungicide spray)
+
+```{r}
+anova_field$`Adjusted means (factor 2 in levels of factor 1)`$`factor_2 in  carb` 
+
+anova_field$`Adjusted means (factor 2 in levels of factor 1)`$`factor_2 in  tebu` 
+
+anova_field$`Adjusted means (factor 2 in levels of factor 1)`$`factor_2 in  untreated` 
+
+```
+
+```{r}
+stats_field %>% 
+  ggplot(aes(fung, audpc, fill = isol))+
+  geom_boxplot(outlier.colour = "grey30", alpha = 0.3, width = 0.5)+
+  ggthemes::scale_fill_calc()+
+  theme_minimal_hgrid()+
+  theme(legend.position = "bottom")+
+  labs(y = "AUDPC", x = "Fungicide treatment", fill = "Isolates")
+
+  ggsave("figs/figure5_field.png", width =10, height =5)
+  
+
+```
+
+
+
+
+
+# COMPETIVENESS ASSAY - RECOVERED ISOLATES isolates
+```{r}
+rec_exp1 <- gsheet2tbl("https://docs.google.com/spreadsheets/d/11o1jpbWg-DUflcSmqNsxSvxBa55HN58m/edit#gid=1440089261") %>% 
+  mutate(exp = "1") %>% 
+  filter(peer != "NA")
+rec_exp2 <- gsheet2tbl("https://docs.google.com/spreadsheets/d/11o1jpbWg-DUflcSmqNsxSvxBa55HN58m/edit#gid=1371468951") %>% 
+  mutate(exp = "2")
+
+rec_comb <- rec_exp2 %>% 
+  filter(fungicide_dish != "carb") %>% 
+  bind_rows(rec_exp1)
+ 
+ rec_comb %>% 
+   # filter(fung == "metc") %>% 
+  # group_by(peer) %>%
+  summarise(count = n()) %>%
+  mutate(cut.count = sum(count),
+         prop = count/sum(count)) 
+  
+
+# rec_exp2 <- gsheet2tbl("https://docs.google.com/spreadsheets/d/11o1jpbWg-DUflcSmqNsxSvxBa55HN58m/edit#gid=1371468951") %>% 
+#   filter(fung != "metc") %>% 
+  # bind_rows(rec_exp1)
+ 
+#  
+# isol_sr1_exp2 <- rec_exp2 %>% 
+#   filter( isol == "S+R1")
+# 
+# tab_exp2 <- table(isol_sr1_exp2$fung,isol_sr1_exp2$peer, isol_sr1_exp2$fungicide_dish)
+# tab_exp2
+# 
+# isol_sr2_exp2 <- rec_exp2 %>% 
+#   filter( isol == "S+R2")
+# 
+# tab_exp2_r2 <- table(isol_sr2_exp2$fung,isol_sr2_exp2$peer, isol_sr2_exp2$fungicide_dish)
+# tab_exp2_r2
+```
+
+## R1
+
+```{r}
+isol_sr1_exp2 <- rec_comb %>% 
+  filter( isol == "S+R1"
+          # , 
+          # fung != "carb"
+          )
+
+tab_exp2 <- table(isol_sr1_exp2$fung,isol_sr1_exp2$peer)
+tab_exp2
+
+chisq.test(tab_exp2)
+fisher.test(tab_exp2) #usado para contagem ate 6
+mosaicplot(fungicide_dish~ fung*peer, data=isol_sr1_exp2, color =T)
+length(isol_sr1_exp2$peer)
+
+
+
+# gráfico de mosaico
+
+
+df_exp2 <- isol_sr1_exp2 %>%
+  group_by(fung, peer) %>%
+  summarise(count = n()) %>%
+  mutate(cut.count = sum(count),
+         prop = count/sum(count)) %>%
+  ungroup()
+
+rec_comb_r1 <- df_exp2 %>% 
+  ggplot(aes(x = fung, y = prop, width = cut.count, fill = peer)) +
+  geom_bar(stat = "identity", position = "fill", alpha = 0.7) + 
+  # scale_fill_grey()+
+  geom_text(aes(label = count), position = position_stack(vjust = 0.7)) + # if labels are desired
+  scale_fill_manual(values=c( "#E7B800", "#00AFBB","#FC4E07"), breaks=c('s', 'r1', 'r2'))+
+  facet_grid(~fung, scales = "free_x", space = "free_x") +
+  theme_void()
+  #theme(legend.position="none")+
+  # ggsave("figs/mosaic_sr1.png", width=3, height=3)
+
+isol_sr1_exp2 %>% 
+  # filter(fung == "untreated") %>% 
+  # filter(fung == "metc") %>% 
+  # filter(fung == "carb") %>%
+  filter(fung == "tebu") %>%
+  group_by(peer) %>%
+  summarise(count = n()) %>%
+  mutate(cut.count = sum(count),
+         prop = count/sum(count))
+```
+
+## R2
+
+```{r}
+
+isol_sr2_exp2 <- rec_comb %>% 
+  filter( isol == "S+R2")
+
+tab_exp2_r2 <- table(isol_sr2_exp2$fung,isol_sr2_exp2$peer)
+tab_exp2_r2
+chisq.test(tab_exp2_r2)
+fisher.test(tab_exp2_r2)
+length(isol_sr2_exp2$peer)
+
+ 
+df_exp2_r2 <- isol_sr2_exp2 %>% 
+  group_by(fung, peer) %>%
+  summarise(count = n() ) %>%
+  mutate(cut.count = sum(count),
+         prop = count/sum(count)) %>%
+  ungroup()
+
+
+rec_comb_r2 <- df_exp2_r2 %>% 
+  ggplot(aes(x = fung, y = prop, width = cut.count, fill = peer)) +
+  geom_bar(stat = "identity", position = "fill", alpha = 0.7) + 
+  # scale_fill_grey()+
+  geom_text(aes(label = count), position = position_stack(vjust = 0.5)) + 
+  scale_fill_manual(values=c( "#E7B800", "#00AFBB","#FC4E07"), breaks=c('s', 'r1', 'r2'))+
+  facet_grid(~fung, scales = "free_x", space = "free_x") +
+  theme_void()
+  #theme(legend.position="none")+
+  # ggsave("figs/mosaic_sr2.png", width=3, height=3)
+
+isol_sr2_exp2 %>% 
+  # filter(fung == "untreated") %>%
+  # filter(fung == "metc") %>%
+  filter(fung == "carb") %>%
+  # filter(fung == "tebu") %>%
+  group_by(peer) %>%
+  summarise(count = n()) %>%
+  mutate(cut.count = sum(count),
+         prop = count/sum(count))
+```
+
+
+# FIGURE 4
+
+
+```{r fig.height=4, fig.width=8}
+
+(rec_comb_r1/rec_comb_r2)+
+  plot_annotation(tag_levels = 'A')+
+  plot_layout(widths = c(1, 1),
+              guides = "collect") &
+  theme(legend.position = "bottom") &
+  labs(fill  = "")
+
+  
+ggsave("figs/figure4_metc2.png", width = 4.5, height = 7)
+
+```
