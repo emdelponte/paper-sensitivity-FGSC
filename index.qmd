@@ -1,9 +1,13 @@
 ---
 title: "Reproducible report: <br/> Resistance to tebuconazole and carbendazim in Fusarium graminearum population"
+date: today
+date-format: long
+author: 
+  - Franklin Machado
 format:
-  html:
-    toc: true
-    toc-location: right
+    html:
+      toc: true
+      toc-location: right
 execute:
   freeze: auto
   cache: true
@@ -21,25 +25,15 @@ All packages used during this work.
 ```{r message=FALSE, warning=FALSE}
 library(readxl)
 library(tidyverse)
-# library(ec50estimator)
 library(cowplot)
 library(ggthemes)
-# library(drc)
-# library(ggridges)
-# library(epiR)
-# library(car)
 library(gsheet)
 library(patchwork)
 library(rnaturalearth)
 library(ggmap)
 library(ggrepel)
-# library(lme4)
-# library(lmerTest)
-# library(ggsn)
 library(agricolae)
 library(easyanova)
-
-
 ```
 
 # Isolates 
@@ -53,6 +47,8 @@ data_load <- gsheet2tbl("https://docs.google.com/spreadsheets/d/1JwJivEu1M6yb4tM
   
 
 data_load
+write_csv(data_load, "data_isolates.csv")
+
 ```
 
 ## By year and state
@@ -176,6 +172,8 @@ mycelial_assay<- gsheet2tbl("https://docs.google.com/spreadsheets/d/11N56uIawd82
   # dplyr::mutate(Dose = as.numeric(Dose))
   
 mycelial_assay
+
+write_csv(mycelial_assay, "data_mycelial.csv")
 
 ```
 
@@ -471,8 +469,11 @@ We also screening isolates through discriminatory dose for each fungicide.
 
 
 ## Dataset - 2011-2014
+
 ```{r}
 dd_2014_all <-  gsheet2tbl("https://docs.google.com/spreadsheets/d/1JwJivEu1M6yb4tMcpXdWiWBSl8rroB8x/edit#gid=473031057") 
+
+write_csv(dd_2014_all,"data_discriminatory_dose.csv")
 
 dd_2014 <- dd_2014_all %>% 
   mutate(test = (test1 + test2)/2,
